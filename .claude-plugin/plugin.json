@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "direnv-session-loader",
+  "displayName": "direnv Session Loader",
+  "version": "0.0.0",
+  "description": "Loads the project's direnv .envrc at session start (worktree-aware) so Claude Code's non-interactive Bash tool inherits the environment.",
+  "author": {
+    "name": "Beau Simensen",
+    "url": "https://github.com/simensen"
+  },
+  "keywords": ["direnv", "environment", "envrc", "hooks", "session-start", "worktree"],
+  "license": "MIT"
+}

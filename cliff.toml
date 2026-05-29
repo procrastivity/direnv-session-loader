@@ -1,0 +1,64 @@
+# git-cliff ~ configuration file
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+header = """
+# Changelog\n
+All notable changes to this project will be documented in this file.\n
+"""
+body = """
+{% if version -%}
+    ## [{{ version | split(pat="--v") | last }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+    ## [Unreleased]
+{% endif -%}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | split(pat="\n") | first | trim }}\
+    {%- endfor %}
+{% endfor %}\n
+"""
+footer = "\n"
+trim = true
+
+[git]
+# Don't require conventional commits — parse all commits with keyword matching
+# so a missed type prefix still lands in a sensible group instead of being dropped.
+conventional_commits = false
+filter_unconventional = false
+commit_parsers = [
+    # Skip noise
+    { message = "^Merge ", skip = true },
+    { message = "^(release: v|chore\\(release\\))", skip = true },
+
+    # A Conventional Commits type prefix is the strongest signal of intent, so
+    # match it first (most specific wins) before falling back to keywords.
+    # This keeps e.g. "docs: add ..." out of Added and "ci: add lint ..." out
+    # of Maintenance.
+    { message = "(?i)^docs?(\\(.+\\))?!?:", group = "Documentation" },
+    { message = "(?i)^(ci|build)(\\(.+\\))?!?:", group = "Infrastructure" },
+    { message = "(?i)^(chore|style)(\\(.+\\))?!?:", group = "Maintenance" },
+    { message = "(?i)^feat(\\(.+\\))?!?:", group = "Added" },
+    { message = "(?i)^fix(\\(.+\\))?!?:", group = "Fixed" },
+    { message = "(?i)^(refactor|perf)(\\(.+\\))?!?:", group = "Changed" },
+
+    # Keyword fallback for commits without a Conventional Commits prefix,
+    # again ordered specific -> generic so e.g. "update docs" lands in
+    # Documentation rather than Changed.
+    { message = "(?i)^(maint|bump|reorder|reorganize)", group = "Maintenance" },
+    { message = "(?i)\\b(lint|fmt|format|tidy|cleanup|chore|housekeep)\\b", group = "Maintenance" },
+    { message = "(?i)\\b(remove|delete|drop|deprecat)\\b", group = "Removed" },
+    { message = "(?i)\\b(docs?|readme|comment|changelog)\\b", group = "Documentation" },
+    { message = "(?i)\\b(ci|workflow|pipeline|release|deploy|nix|flake|biome|lefthook)\\b", group = "Infrastructure" },
+    { message = "(?i)\\b(fix|bug|patch|correct|resolve)\\b", group = "Fixed" },
+    { message = "(?i)\\b(change|update|rename|refactor|move|rework|improve)\\b", group = "Changed" },
+    { message = "(?i)\\b(add|support|new|feat|implement)\\b", group = "Added" },
+
+    # Everything else lands here
+    { message = ".*", group = "Other" },
+]
+filter_commits = false
+tag_pattern = ".*--v[0-9].*"
+sort_commits = "oldest"
