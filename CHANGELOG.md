@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-05-31
+
+### Documentation
+
+- release: notify claude-plugins marketplace on release
+- docs: refocus README on install/update for end users
+
+### Infrastructure
+
+- release: distinguish missing gh from unauthenticated gh
+
 ## [0.1.0] - 2026-05-29
 
 ### Fixed
