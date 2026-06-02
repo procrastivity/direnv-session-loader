@@ -15,29 +15,29 @@ directory, it falls back to the main git repo root.
 This plugin is distributed through the
 [procrastivity](https://github.com/procrastivity/claude-plugins) marketplace.
 
-**First, add the marketplace.**
+### From within Claude Code
 
-From within Claude Code:
+Add the marketplace (if not already added).
 
 ```
 /plugin marketplace add procrastivity/claude-plugins
 ```
 
-Or from the command line:
-
-```
-claude plugin marketplace add procrastivity/claude-plugins
-```
-
-**Second, install the plugin.**
-
-From within Claude Code:
+Install the plugin.
 
 ```
 /plugin install direnv-session-loader@procrastivity
 ```
 
-Or from the command line:
+### From the command line
+
+Add the marketplace (if not already added).
+
+```
+claude plugin marketplace add procrastivity/claude-plugins
+```
+
+Install the plugin.
 
 ```
 claude plugin install direnv-session-loader@procrastivity
@@ -47,13 +47,13 @@ claude plugin install direnv-session-loader@procrastivity
 
 Refresh the marketplace to pull in the latest version.
 
-From within Claude Code:
+### From within Claude Code
 
 ```
 /plugin marketplace update procrastivity
 ```
 
-Or from the command line:
+### From the command line
 
 ```
 claude plugin marketplace update procrastivity
@@ -70,9 +70,10 @@ load-once design: ideal for the one-worktree-per-session workflow, but it will
 
 ## Notes & caveats
 
-- The script **sources `.envrc` directly** and diffs the environment, so it does
-  not require the `direnv` binary to be installed. If you instead want true
-  direnv semantics, replace the body with `direnv export bash`.
+- The script shells out to the `direnv` binary, so direnv must be installed and
+  the `.envrc` must be `direnv allow`'d. This gives you the full direnv stdlib
+  (`use flake`, `source_url`, `has`, layouts, etc.) — including nix-direnv for
+  Nix dev shells.
 - The `PATH` line at the top of the script is macOS/Homebrew-flavored; it also
   includes `/usr/bin:/bin` so Linux `git` resolves. Adjust if needed.
 - Env vars populated this way reach the **Bash tool only** — not the PowerShell
