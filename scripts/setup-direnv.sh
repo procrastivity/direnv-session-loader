@@ -65,9 +65,20 @@ envrc_dir=$(dirname "$envrc_path")
 # stdlib (use flake, source_url, has, layout, ...) runs. This is what makes the
 # Nix dev shell — and therefore node, git-cliff, etc. — actually land on PATH.
 # Produces nothing if the .envrc is not `direnv allow`ed (fails safe).
-exports=$(cd "$envrc_dir" && direnv export bash 2>/dev/null)
+#
+# Capture stderr separately so a partially-failing .envrc (e.g. `use flake`
+# without Nix installed) surfaces the error instead of silently applying a
+# partial export block.
+err_file=$(mktemp -t direnv-loader.XXXXXX)
+exports=$(cd "$envrc_dir" && direnv export bash 2>"$err_file")
+status=$?
 
-if [ -n "$exports" ]; then
+if [ $status -eq 0 ] && [ -n "$exports" ]; then
   printf '%s\n' "$exports" >> "$CLAUDE_ENV_FILE"
   echo "direnv: loaded $envrc_path"
+elif [ $status -ne 0 ]; then
+  first_err=$(head -n 1 "$err_file")
+  echo "direnv: failed to load $envrc_path${first_err:+ ($first_err)}"
 fi
+
+rm -f "$err_file"
