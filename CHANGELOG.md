@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-06-02
+
+### Documentation
+
+- docs: refresh README install/update layout and correct direnv requirement note
+
+### Fixed
+
+- fix: surface direnv load errors instead of silently applying partial env
+
 ## [0.1.1] - 2026-05-31
 
 ### Documentation
