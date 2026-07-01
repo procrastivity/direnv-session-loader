@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # wrap-bash.py — Codex PreToolUse hook that wraps shell commands with
-# `direnv exec <envrc_dir> bash -c <cmd>` so the running shell inherits
-# the project's direnv-exported environment on every call.
+# `<direnv_bin> exec <envrc_dir> bash -c <cmd>` so the running shell
+# inherits the project's direnv-exported environment on every call.
 #
 # Codex's SessionStart hook cannot export env vars into later tool calls,
 # so the SessionStart half (setup-direnv.sh) only locates the .envrc and
-# caches its directory in $PLUGIN_DATA/envrc_dir. This script reads that
-# cache and rewrites tool_input.command per shell invocation.
+# caches its directory + the resolved `direnv` binary path under
+# $PLUGIN_DATA/<session_id>/. This script reads that cache and rewrites
+# tool_input.command per shell invocation.
 #
 # Output shape: Codex requires PreToolUse rewrites to go inside
 # `hookSpecificOutput` alongside `permissionDecision: "allow"`. That
@@ -27,51 +28,9 @@ def passthrough() -> None:
     sys.exit(0)
 
 
-def main() -> None:
-    plugin_data = os.environ.get("PLUGIN_DATA")
-    if not plugin_data:
-        passthrough()
-
-    cache = pathlib.Path(plugin_data) / "envrc_dir"
-    if not cache.is_file():
-        passthrough()
-
-    try:
-        envrc_dir = cache.read_text().strip()
-    except OSError:
-        passthrough()
-    if not envrc_dir:
-        passthrough()
-
-    try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        passthrough()
-
-    tool_input = payload.get("tool_input") or {}
-    cmd = tool_input.get("command")
-    if not isinstance(cmd, str) or not cmd:
-        passthrough()
-
-    # Don't wrap `direnv` itself. If the .envrc changes mid-session
-    # (agent edits it, or a `git checkout` swaps in a different one),
-    # direnv marks it stale/blocked and `direnv exec DIR ...` fails
-    # before running its inner command — including a user-issued
-    # `direnv allow` to recover. Leaving `direnv` commands unwrapped
-    # keeps that recovery path open. SessionStart's probe can only
-    # catch a stale .envrc that was already stale at session start;
-    # mid-session drift needs this second escape hatch.
-    first_token = cmd.split(None, 1)
-    if not first_token or first_token[0] == "direnv":
-        passthrough()
-
-    wrapped = "direnv exec {} bash -c {}".format(
-        shlex.quote(envrc_dir),
-        shlex.quote(cmd),
-    )
-
+def emit_rewrite(tool_input: dict, new_cmd: str) -> None:
     updated = dict(tool_input)
-    updated["command"] = wrapped
+    updated["command"] = new_cmd
     json.dump(
         {
             "hookSpecificOutput": {
@@ -82,6 +41,71 @@ def main() -> None:
         },
         sys.stdout,
     )
+
+
+def main() -> None:
+    plugin_data = os.environ.get("PLUGIN_DATA")
+    if not plugin_data:
+        passthrough()
+
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        passthrough()
+
+    # $PLUGIN_DATA is plugin-scoped, not session-scoped. Look up cache
+    # under the per-session subdir that SessionStart wrote to.
+    session_id = payload.get("session_id") or "default"
+    session_dir = pathlib.Path(plugin_data) / session_id
+    cache = session_dir / "envrc_dir"
+    direnv_bin_cache = session_dir / "direnv_bin"
+
+    if not cache.is_file() or not direnv_bin_cache.is_file():
+        passthrough()
+
+    try:
+        envrc_dir = cache.read_text().strip()
+        direnv_bin = direnv_bin_cache.read_text().strip()
+    except OSError:
+        passthrough()
+    if not envrc_dir or not direnv_bin:
+        passthrough()
+
+    tool_input = payload.get("tool_input") or {}
+    cmd = tool_input.get("command")
+    if not isinstance(cmd, str) or not cmd:
+        passthrough()
+
+    tokens = cmd.split(None, 1)
+    if not tokens:
+        passthrough()
+
+    # Don't wrap `direnv` itself. If the .envrc changes mid-session
+    # (agent edits it, or a `git checkout` swaps in a different one),
+    # direnv marks it stale/blocked and `direnv exec DIR ...` fails
+    # before running its inner command — including a user-issued
+    # `direnv allow` to recover. Leaving `direnv` commands out of the
+    # `direnv exec` wrap keeps that recovery path open. SessionStart's
+    # probe can only catch a stale .envrc that was already stale at
+    # session start; mid-session drift needs this second escape hatch.
+    #
+    # We still substitute the resolved absolute path for `direnv`, so
+    # recovery works even if the shell tool's PATH doesn't include the
+    # binary's directory.
+    if tokens[0] == "direnv":
+        remainder = tokens[1] if len(tokens) > 1 else ""
+        rewritten = shlex.quote(direnv_bin)
+        if remainder:
+            rewritten += " " + remainder
+        emit_rewrite(tool_input, rewritten)
+        return
+
+    wrapped = "{} exec {} bash -c {}".format(
+        shlex.quote(direnv_bin),
+        shlex.quote(envrc_dir),
+        shlex.quote(cmd),
+    )
+    emit_rewrite(tool_input, wrapped)
 
 
 if __name__ == "__main__":

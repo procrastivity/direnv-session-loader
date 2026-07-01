@@ -1,12 +1,21 @@
 #!/bin/bash
 # setup-direnv.sh (Codex variant) — locate the nearest .envrc and cache its
-# directory for the PreToolUse wrapper.
+# directory (plus direnv's resolved binary path) for the PreToolUse wrapper.
 #
 # Codex's SessionStart hook cannot export env vars into subsequent shell
 # tool calls (unlike Claude Code's $CLAUDE_ENV_FILE), so this script only
-# does the discovery half: it writes the resolved envrc directory to
-# $PLUGIN_DATA/envrc_dir, which wrap-bash.py reads on every shell call to
-# prepend `direnv exec`.
+# does the discovery half: it writes state under
+# $PLUGIN_DATA/<session_id>/, which wrap-bash.py reads on every shell
+# call to prepend `direnv exec`.
+#
+# The cache is partitioned by session_id because $PLUGIN_DATA is
+# plugin-scoped, not session-scoped — two concurrent Codex sessions in
+# different repos would otherwise clobber each other's cache.
+#
+# We also cache direnv's absolute path (resolved via the extra PATH set
+# below) because the shell tool that runs the wrapped command does NOT
+# inherit that PATH augmentation, and direnv may not be reachable via
+# the tool's default PATH.
 #
 # Worktree-aware: walks up from the session cwd for a .envrc, then falls
 # back to the main git repo root via --git-common-dir.
@@ -17,27 +26,40 @@ export PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$HOME/.loc
 
 [ -z "$PLUGIN_DATA" ] && exit 0
 
-# Every SessionStart begins with a clean cache. Resumes into a directory
-# without an .envrc must not inherit a prior session's cached path, or
-# wrap-bash.py will keep wrapping with the wrong project's env.
-mkdir -p "$PLUGIN_DATA"
-cache_file="$PLUGIN_DATA/envrc_dir"
-rm -f "$cache_file"
-
-command -v direnv >/dev/null 2>&1 || exit 0
-
-# Codex passes the hook payload as JSON on stdin. We need `cwd` from it to
-# anchor the .envrc walk; fall back to $PWD if parsing fails.
+# Codex passes the hook payload as JSON on stdin. We need `cwd` to anchor
+# the .envrc walk and `session_id` to partition the cache. Fall back to
+# $PWD and "default" respectively if parsing fails.
 project_dir=""
+session_id=""
 if command -v python3 >/dev/null 2>&1; then
-  project_dir=$(python3 -c 'import json,sys
+  payload_info=$(python3 -c 'import json,sys
 try:
     d = json.load(sys.stdin)
-    print(d.get("cwd", ""))
 except Exception:
-    pass' 2>/dev/null) || project_dir=""
+    d = {}
+print(d.get("cwd", ""))
+print(d.get("session_id", ""))
+' 2>/dev/null) || payload_info=""
+  {
+    IFS= read -r project_dir
+    IFS= read -r session_id
+  } <<<"$payload_info"
 fi
 [ -z "$project_dir" ] && project_dir="$PWD"
+[ -z "$session_id" ] && session_id="default"
+
+session_dir="$PLUGIN_DATA/$session_id"
+mkdir -p "$session_dir"
+cache_file="$session_dir/envrc_dir"
+direnv_bin_file="$session_dir/direnv_bin"
+
+# Every SessionStart begins with a clean cache for THIS session. Resumes
+# into a directory without an .envrc must not inherit this session's
+# earlier cache. Other sessions' caches are untouched (their subdirs).
+rm -f "$cache_file" "$direnv_bin_file"
+
+direnv_bin=$(command -v direnv 2>/dev/null) || exit 0
+[ -z "$direnv_bin" ] && exit 0
 
 # shellcheck source=../lib/find-envrc.sh
 . "$(dirname "$0")/../lib/find-envrc.sh"
@@ -57,6 +79,7 @@ status=$?
 
 if [ $status -eq 0 ] && [ -n "$exports" ]; then
   printf '%s\n' "$envrc_dir" > "$cache_file"
+  printf '%s\n' "$direnv_bin" > "$direnv_bin_file"
   echo "direnv: loaded $envrc_path"
 elif [ $status -ne 0 ]; then
   first_err=$(head -n 1 "$err_file")
