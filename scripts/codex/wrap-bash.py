@@ -53,6 +53,18 @@ def main() -> None:
     if not isinstance(cmd, str) or not cmd:
         passthrough()
 
+    # Don't wrap `direnv` itself. If the .envrc changes mid-session
+    # (agent edits it, or a `git checkout` swaps in a different one),
+    # direnv marks it stale/blocked and `direnv exec DIR ...` fails
+    # before running its inner command — including a user-issued
+    # `direnv allow` to recover. Leaving `direnv` commands unwrapped
+    # keeps that recovery path open. SessionStart's probe can only
+    # catch a stale .envrc that was already stale at session start;
+    # mid-session drift needs this second escape hatch.
+    first_token = cmd.split(None, 1)
+    if not first_token or first_token[0] == "direnv":
+        passthrough()
+
     wrapped = "direnv exec {} bash -c {}".format(
         shlex.quote(envrc_dir),
         shlex.quote(cmd),
