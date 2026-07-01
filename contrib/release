@@ -93,21 +93,39 @@ git push
 echo "Tagging ${TAG}..."
 claude plugin tag --push -m "Release %s"
 
-# --- Notify the marketplace repo ---
+# --- Notify the marketplace repos ---
 #
-# Best-effort: ping procrastivity/claude-plugins so it regenerates its README /
-# marketplace metadata against this plugin's new version. Uses the releaser's
-# local 'gh' auth (no stored secrets). The tag is already pushed at this point,
-# so a failure here must not fail the release — warn and continue.
-MARKETPLACE_REPO="procrastivity/claude-plugins"
-if ! command -v gh >/dev/null; then
-  echo "note: 'gh' not installed; skipping ${MARKETPLACE_REPO} notification (it will catch up on its next scheduled run)." >&2
-elif ! gh auth status >/dev/null 2>&1; then
-  echo "note: 'gh' not authenticated; skipping ${MARKETPLACE_REPO} notification (it will catch up on its next scheduled run)." >&2
-else
-  echo "Notifying ${MARKETPLACE_REPO} of the release..."
-  gh api "repos/${MARKETPLACE_REPO}/dispatches" -f event_type=plugin-released ||
-    echo "warning: could not notify ${MARKETPLACE_REPO} (it will catch up on its next scheduled run)." >&2
+# Best-effort: ping the Claude and Codex marketplaces so they refresh against
+# this plugin's new tag. Uses the releaser's local 'gh' auth (no stored
+# secrets). The tag is already pushed at this point, so a failure here must
+# not fail the release — warn and continue.
+CLAUDE_MARKETPLACE="procrastivity/claude-plugins"
+CODEX_MARKETPLACE="procrastivity/codex-plugins"
+
+notify_available() {
+  if ! command -v gh >/dev/null; then
+    echo "note: 'gh' not installed; skipping marketplace notifications." >&2
+    return 1
+  fi
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "note: 'gh' not authenticated; skipping marketplace notifications." >&2
+    return 1
+  fi
+}
+
+if notify_available; then
+  echo "Notifying ${CLAUDE_MARKETPLACE} of the release..."
+  gh api "repos/${CLAUDE_MARKETPLACE}/dispatches" -f event_type=plugin-released ||
+    echo "warning: could not notify ${CLAUDE_MARKETPLACE} (it will catch up on its next scheduled run)." >&2
+
+  # Codex marketplace re-mirrors the Codex slice of this repo at the new tag.
+  echo "Notifying ${CODEX_MARKETPLACE} of the release..."
+  gh api "repos/${CODEX_MARKETPLACE}/dispatches" \
+    -f event_type=mirror-plugin \
+    -f "client_payload[plugin]=${PLUGIN_NAME}" \
+    -f "client_payload[source_repo]=procrastivity/${PLUGIN_NAME}" \
+    -f "client_payload[ref]=${TAG}" ||
+    echo "warning: could not notify ${CODEX_MARKETPLACE} (re-run 'gh workflow run mirror.yml' on ${CODEX_MARKETPLACE} to catch up)." >&2
 fi
 
 cat <<EOF

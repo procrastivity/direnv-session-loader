@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}\"/scripts/codex/setup-direnv.sh",
+            "statusMessage": "Loading direnv"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}\"/scripts/codex/wrap-bash.py"
+          }
+        ]
+      }
+    ]
+  }
+}

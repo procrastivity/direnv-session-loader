@@ -1,16 +1,15 @@
-# direnv Session Loader — Claude Code plugin
+# direnv Session Loader — Claude Code & Codex plugin
 
-A minimal Claude Code plugin that loads your project's direnv `.envrc` **once at
-session start** and exposes the resulting variables to every Bash tool command
-Claude runs during the session.
+A minimal plugin (Claude Code and OpenAI Codex CLI) that loads your project's
+direnv `.envrc` so every shell command the agent runs sees the right
+environment. Both CLIs spawn shell calls in fresh, non-interactive shells that
+don't source your `~/.bashrc`/`~/.zshrc`, so the normal direnv shell hook never
+fires. This plugin closes that gap.
 
-Claude Code runs each Bash command in a fresh, non-interactive shell that does
-not source your `~/.bashrc`/`~/.zshrc`, so the normal direnv shell hook never
-fires. This plugin closes that gap with a `SessionStart` hook. It is also
-worktree-aware: if no `.envrc` is found by walking up from the project
+It is worktree-aware: if no `.envrc` is found by walking up from the project
 directory, it falls back to the main git repo root.
 
-## Install
+## Install (Claude Code)
 
 This plugin is distributed through the
 [procrastivity](https://github.com/procrastivity/claude-plugins) marketplace.
@@ -59,14 +58,46 @@ Refresh the marketplace to pull in the latest version.
 claude plugin marketplace update procrastivity
 ```
 
+## Install (Codex CLI)
+
+Codex's plugin layout mirrors Claude Code's. Install via the same
+marketplace mechanism Codex provides (`/plugins` inside Codex, or
+`codex plugin install` from the CLI), pointed at this repo. The Codex side
+loads its manifest from `.codex-plugin/plugin.json`.
+
+The Codex plugin requires `python3` on `PATH` in addition to `direnv`.
+
+## How it differs between Claude Code and Codex
+
+Claude Code's `SessionStart` hook can append `export KEY=VAL` lines to
+`$CLAUDE_ENV_FILE`, and the harness merges those into every Bash tool spawn
+for the rest of the session. One shot, done.
+
+Codex's `SessionStart` hook *cannot* mutate the env of later tool calls —
+its output is added to developer context, not exported. So the Codex
+variant runs as two hooks:
+
+- `SessionStart` locates the `.envrc` (same discovery logic) and caches its
+  directory in `$PLUGIN_DATA`.
+- `PreToolUse` rewrites every shell tool call to
+  `direnv exec <envrc_dir> -- bash -c <cmd>`, so the running shell inherits
+  the direnv-exported environment.
+
+`direnv exec` is fast (it caches the export), so the per-call overhead is
+small. The trade-off is that the resolved `.envrc` is fixed at session
+start — neither variant reloads if the agent `cd`s into a different
+project mid-session.
+
 ## Scope: SessionStart only (by design)
 
-This intentionally ships **only** a `SessionStart` hook, not `CwdChanged`. The
-script resolves the `.envrc` relative to `$CLAUDE_PROJECT_DIR` (fixed for the
-session) and appends to `$CLAUDE_ENV_FILE` (it never unloads). That makes it a
-load-once design: ideal for the one-worktree-per-session workflow, but it will
-**not** reload if Claude `cd`s into a different project with a different
-`.envrc` mid-session.
+The Claude variant intentionally ships **only** a `SessionStart` hook, not
+`CwdChanged`. The script resolves the `.envrc` relative to
+`$CLAUDE_PROJECT_DIR` (fixed for the session) and appends to
+`$CLAUDE_ENV_FILE` (it never unloads). That makes it a load-once design:
+ideal for the one-worktree-per-session workflow, but it will **not** reload
+if Claude `cd`s into a different project with a different `.envrc`
+mid-session. The Codex variant inherits the same load-once trade-off via
+its cached `envrc_dir`.
 
 ## Notes & caveats
 
@@ -76,8 +107,8 @@ load-once design: ideal for the one-worktree-per-session workflow, but it will
   Nix dev shells.
 - The `PATH` line at the top of the script is macOS/Homebrew-flavored; it also
   includes `/usr/bin:/bin` so Linux `git` resolves. Adjust if needed.
-- Env vars populated this way reach the **Bash tool only** — not the PowerShell
-  tool, MCP servers, or subagents.
+- Env vars populated this way reach the **shell tool only** — not other tool
+  types, MCP servers, or subagents.
 
 ## Credits & license
 
