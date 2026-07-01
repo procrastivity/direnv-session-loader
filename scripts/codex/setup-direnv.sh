@@ -61,25 +61,32 @@ rm -f "$cache_file" "$direnv_bin_file"
 direnv_bin=$(command -v direnv 2>/dev/null) || exit 0
 [ -z "$direnv_bin" ] && exit 0
 
+# Cache the resolved direnv path BEFORE the probe. If the probe later
+# fails (blocked .envrc, etc.), the user's `direnv allow` recovery
+# command still needs an absolute path — otherwise it'd get passed
+# through and fail with `direnv: command not found` in a shell tool
+# whose PATH doesn't include the direnv binary. wrap-bash.py treats a
+# cache with only direnv_bin (no envrc_dir) as recovery-only mode.
+printf '%s\n' "$direnv_bin" > "$direnv_bin_file"
+
 # shellcheck source=../lib/find-envrc.sh
 . "$(dirname "$0")/../lib/find-envrc.sh"
 
 envrc_path=$(find_envrc "$project_dir") || exit 0
 envrc_dir=$(dirname "$envrc_path")
 
-# Probe direnv before caching. If the .envrc is blocked (not `direnv
-# allow`ed) or fails to evaluate, `direnv exec` in wrap-bash.py would
-# error out before running the user's command — including their attempt
-# to run `direnv allow` from inside Codex. Only cache once we know
-# `direnv export bash` succeeds; otherwise report the failure the same
-# way the Claude variant does.
+# Probe direnv before caching envrc_dir. If the .envrc is blocked (not
+# `direnv allow`ed) or fails to evaluate, `direnv exec` in wrap-bash.py
+# would error out before running the user's command. Only cache
+# envrc_dir once we know `direnv export bash` succeeds; otherwise report
+# the failure the same way the Claude variant does. direnv_bin stays
+# cached (written above) so recovery commands still resolve.
 err_file=$(mktemp -t direnv-loader.XXXXXX)
 exports=$(cd "$envrc_dir" && direnv export bash 2>"$err_file")
 status=$?
 
 if [ $status -eq 0 ] && [ -n "$exports" ]; then
   printf '%s\n' "$envrc_dir" > "$cache_file"
-  printf '%s\n' "$direnv_bin" > "$direnv_bin_file"
   echo "direnv: loaded $envrc_path"
 elif [ $status -ne 0 ]; then
   first_err=$(head -n 1 "$err_file")

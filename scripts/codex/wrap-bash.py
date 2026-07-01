@@ -57,19 +57,31 @@ def main() -> None:
     # under the per-session subdir that SessionStart wrote to.
     session_id = payload.get("session_id") or "default"
     session_dir = pathlib.Path(plugin_data) / session_id
-    cache = session_dir / "envrc_dir"
+    envrc_cache = session_dir / "envrc_dir"
     direnv_bin_cache = session_dir / "direnv_bin"
 
-    if not cache.is_file() or not direnv_bin_cache.is_file():
+    # direnv_bin is the minimum for us to do anything useful. Without
+    # it we can't rewrite either wraps or recovery commands.
+    if not direnv_bin_cache.is_file():
         passthrough()
-
     try:
-        envrc_dir = cache.read_text().strip()
         direnv_bin = direnv_bin_cache.read_text().strip()
     except OSError:
         passthrough()
-    if not envrc_dir or not direnv_bin:
+    if not direnv_bin:
         passthrough()
+
+    # envrc_dir is optional: SessionStart may have cached direnv_bin
+    # but failed the .envrc probe (blocked/stale). In that case we're
+    # in recovery-only mode — we can still rewrite `direnv ...` calls
+    # to use the absolute path so the user can `direnv allow`, but we
+    # can't (and shouldn't) wrap other commands in `direnv exec`.
+    envrc_dir = ""
+    if envrc_cache.is_file():
+        try:
+            envrc_dir = envrc_cache.read_text().strip()
+        except OSError:
+            envrc_dir = ""
 
     tool_input = payload.get("tool_input") or {}
     cmd = tool_input.get("command")
@@ -99,6 +111,11 @@ def main() -> None:
             rewritten += " " + remainder
         emit_rewrite(tool_input, rewritten)
         return
+
+    # Non-direnv commands need envrc_dir to wrap; without it we're in
+    # recovery-only mode and just let the command through.
+    if not envrc_dir:
+        passthrough()
 
     wrapped = "{} exec {} bash -c {}".format(
         shlex.quote(direnv_bin),
