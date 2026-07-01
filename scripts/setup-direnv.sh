@@ -25,38 +25,8 @@ command -v direnv >/dev/null 2>&1 || exit 0
 
 project_dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
-find_envrc() {
-  local dir="$1"
-  while [ "$dir" != "/" ]; do
-    if [ -f "$dir/.envrc" ]; then
-      echo "$dir/.envrc"
-      return 0
-    fi
-    dir=$(dirname "$dir")
-  done
-
-  if git -C "$project_dir" rev-parse --show-toplevel >/dev/null 2>&1; then
-    local toplevel
-    toplevel=$(git -C "$project_dir" rev-parse --show-toplevel 2>/dev/null)
-    if [ -f "$toplevel/.envrc" ]; then
-      echo "$toplevel/.envrc"
-      return 0
-    fi
-
-    local common_dir
-    common_dir=$(git -C "$project_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-    if [ -n "$common_dir" ]; then
-      local main_repo
-      main_repo=$(dirname "$common_dir")
-      if [ -f "$main_repo/.envrc" ]; then
-        echo "$main_repo/.envrc"
-        return 0
-      fi
-    fi
-  fi
-
-  return 1
-}
+# shellcheck source=lib/find-envrc.sh
+. "$(dirname "$0")/lib/find-envrc.sh"
 
 envrc_path=$(find_envrc "$project_dir") || exit 0
 envrc_dir=$(dirname "$envrc_path")
