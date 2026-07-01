@@ -45,7 +45,22 @@ fi
 envrc_path=$(find_envrc "$project_dir") || exit 0
 envrc_dir=$(dirname "$envrc_path")
 
-printf '%s\n' "$envrc_dir" > "$cache_file"
+# Probe direnv before caching. If the .envrc is blocked (not `direnv
+# allow`ed) or fails to evaluate, `direnv exec` in wrap-bash.py would
+# error out before running the user's command — including their attempt
+# to run `direnv allow` from inside Codex. Only cache once we know
+# `direnv export bash` succeeds; otherwise report the failure the same
+# way the Claude variant does.
+err_file=$(mktemp -t direnv-loader.XXXXXX)
+exports=$(cd "$envrc_dir" && direnv export bash 2>"$err_file")
+status=$?
 
-# Codex surfaces stdout as developer context — matches the Claude UX.
-echo "direnv: loaded $envrc_path"
+if [ $status -eq 0 ] && [ -n "$exports" ]; then
+  printf '%s\n' "$envrc_dir" > "$cache_file"
+  echo "direnv: loaded $envrc_path"
+elif [ $status -ne 0 ]; then
+  first_err=$(head -n 1 "$err_file")
+  echo "direnv: failed to load $envrc_path${first_err:+ ($first_err)}"
+fi
+
+rm -f "$err_file"
