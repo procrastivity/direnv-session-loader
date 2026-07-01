@@ -78,7 +78,7 @@ codex plugin marketplace add procrastivity/codex-plugins
 Install the plugin.
 
 ```
-codex plugin install direnv-session-loader
+codex plugin add direnv-session-loader@procrastivity-codex
 ```
 
 ### From within Codex
