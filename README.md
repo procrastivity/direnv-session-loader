@@ -60,10 +60,35 @@ claude plugin marketplace update procrastivity
 
 ## Install (Codex CLI)
 
-Codex's plugin layout mirrors Claude Code's. Install via the same
-marketplace mechanism Codex provides (`/plugins` inside Codex, or
-`codex plugin install` from the CLI), pointed at this repo. The Codex side
-loads its manifest from `.codex-plugin/plugin.json`.
+The Codex variant is distributed through the sibling
+[procrastivity/codex-plugins](https://github.com/procrastivity/codex-plugins)
+marketplace, which mirrors the Codex-relevant slice of this repo. (Codex's
+marketplace schema requires plugin files to live inside the marketplace
+repo, so this plugin can't be installed by pointing Codex at this repo
+directly.)
+
+### From the command line
+
+Add the marketplace (if not already added).
+
+```
+codex plugin marketplace add procrastivity/codex-plugins
+```
+
+Install the plugin.
+
+```
+codex plugin install direnv-session-loader
+```
+
+### From within Codex
+
+```
+/plugins
+```
+
+Browse to `procrastivity (Codex)`, select **direnv-session-loader**,
+and install.
 
 The Codex plugin requires `python3` on `PATH` in addition to `direnv`.
 
@@ -80,7 +105,7 @@ variant runs as two hooks:
 - `SessionStart` locates the `.envrc` (same discovery logic) and caches its
   directory in `$PLUGIN_DATA`.
 - `PreToolUse` rewrites every shell tool call to
-  `direnv exec <envrc_dir> -- bash -c <cmd>`, so the running shell inherits
+  `direnv exec <envrc_dir> bash -c <cmd>`, so the running shell inherits
   the direnv-exported environment.
 
 `direnv exec` is fast (it caches the export), so the per-call overhead is
