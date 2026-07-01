@@ -26,7 +26,7 @@ payload=$(cat)
 command -v python3 >/dev/null 2>&1 || exit 0
 
 matches=$(printf '%s' "$payload" | python3 -c '
-import json, sys
+import json, os, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
@@ -35,7 +35,12 @@ if d.get("tool_name") != "Bash":
     print(0); raise SystemExit
 cmd = (d.get("tool_input") or {}).get("command") or ""
 tokens = cmd.split(None, 1)
-print(1 if tokens and tokens[0] == "direnv" else 0)
+# Match by basename because wrap-bash.py rewrites bare `direnv` to the
+# cached absolute path (e.g. /opt/homebrew/bin/direnv) BEFORE the tool
+# runs, and Codex builds the PostToolUse payload from the rewritten
+# tool_input. A plain "direnv" check would miss the rewritten form and
+# the recovery path would never trigger a re-probe.
+print(1 if tokens and os.path.basename(tokens[0]) == "direnv" else 0)
 ' 2>/dev/null) || matches=0
 
 if [ "$matches" = "1" ]; then
