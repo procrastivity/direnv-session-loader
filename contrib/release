@@ -6,6 +6,7 @@ PROJECT_ROOT=$(cd "$DIR/.." && pwd)
 cd "$PROJECT_ROOT"
 
 MANIFEST=".claude-plugin/plugin.json"
+CODEX_MANIFEST=".codex-plugin/plugin.json"
 
 usage() {
   echo "Usage: contrib/release --major | --minor | --patch"
@@ -63,8 +64,13 @@ TAG="${PLUGIN_NAME}--v${NEW_VERSION}"
 echo "Releasing ${CURRENT_VERSION} -> ${NEW_VERSION} (tag ${TAG}) on branch ${BRANCH}"
 
 # Write the new version back (temp + mv so a jq error can't truncate the file).
-tmp=$(mktemp)
-jq --arg v "$NEW_VERSION" '.version = $v' "$MANIFEST" >"$tmp" && mv "$tmp" "$MANIFEST"
+# Keep the Codex manifest in lockstep so /plugins in Codex advertises the
+# same version as the tag.
+for m in "$MANIFEST" "$CODEX_MANIFEST"; do
+  [ -f "$m" ] || continue
+  tmp=$(mktemp)
+  jq --arg v "$NEW_VERSION" '.version = $v' "$m" >"$tmp" && mv "$tmp" "$m"
+done
 
 # --- Regenerate changelog ---
 #
@@ -79,6 +85,7 @@ git-cliff --tag "$TAG" -o CHANGELOG.md
 # 'release: vX.Y.Z' matches the cliff skip rule so the release commit itself
 # stays out of the changelog.
 git add "$MANIFEST" CHANGELOG.md
+[ -f "$CODEX_MANIFEST" ] && git add "$CODEX_MANIFEST"
 git commit -m "release: v${NEW_VERSION}"
 
 # --- Push branch, then tag via the plugin CLI ---

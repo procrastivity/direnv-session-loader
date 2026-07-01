@@ -14,7 +14,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "shell",
+        "matcher": "^Bash$",
         "hooks": [
           {
             "type": "command",

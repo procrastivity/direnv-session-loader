@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # wrap-bash.py — Codex PreToolUse hook that wraps shell commands with
-# `direnv exec <envrc_dir> -- bash -c <cmd>` so the running shell inherits
+# `direnv exec <envrc_dir> bash -c <cmd>` so the running shell inherits
 # the project's direnv-exported environment on every call.
 #
 # Codex's SessionStart hook cannot export env vars into later tool calls,
@@ -8,8 +8,12 @@
 # caches its directory in $PLUGIN_DATA/envrc_dir. This script reads that
 # cache and rewrites tool_input.command per shell invocation.
 #
-# Behavior on any unexpected input: emit an empty JSON object so Codex
-# proceeds with the original command unchanged. Never block a tool call.
+# Output shape: Codex requires PreToolUse rewrites to go inside
+# `hookSpecificOutput` alongside `permissionDecision: "allow"`. That
+# means wrapping a command also short-circuits the normal approval
+# prompt for that call — the trade-off for being able to rewrite it.
+# On any unexpected input we emit an empty JSON object so Codex
+# proceeds with the original command and normal approval flow.
 
 import json
 import os
@@ -49,14 +53,23 @@ def main() -> None:
     if not isinstance(cmd, str) or not cmd:
         passthrough()
 
-    wrapped = "direnv exec {} -- bash -c {}".format(
+    wrapped = "direnv exec {} bash -c {}".format(
         shlex.quote(envrc_dir),
         shlex.quote(cmd),
     )
 
     updated = dict(tool_input)
     updated["command"] = wrapped
-    json.dump({"updatedInput": updated}, sys.stdout)
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "updatedInput": updated,
+            }
+        },
+        sys.stdout,
+    )
 
 
 if __name__ == "__main__":

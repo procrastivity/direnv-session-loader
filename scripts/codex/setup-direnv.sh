@@ -16,6 +16,14 @@
 export PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 [ -z "$PLUGIN_DATA" ] && exit 0
+
+# Every SessionStart begins with a clean cache. Resumes into a directory
+# without an .envrc must not inherit a prior session's cached path, or
+# wrap-bash.py will keep wrapping with the wrong project's env.
+mkdir -p "$PLUGIN_DATA"
+cache_file="$PLUGIN_DATA/envrc_dir"
+rm -f "$cache_file"
+
 command -v direnv >/dev/null 2>&1 || exit 0
 
 # Codex passes the hook payload as JSON on stdin. We need `cwd` from it to
@@ -37,8 +45,7 @@ fi
 envrc_path=$(find_envrc "$project_dir") || exit 0
 envrc_dir=$(dirname "$envrc_path")
 
-mkdir -p "$PLUGIN_DATA"
-printf '%s\n' "$envrc_dir" > "$PLUGIN_DATA/envrc_dir"
+printf '%s\n' "$envrc_dir" > "$cache_file"
 
 # Codex surfaces stdout as developer context — matches the Claude UX.
 echo "direnv: loaded $envrc_path"
