@@ -1,7 +1,7 @@
 {
   "name": "direnv-session-loader",
   "displayName": "direnv Session Loader",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Loads the project's direnv .envrc at session start (worktree-aware) and runs shell commands under `direnv exec` so Codex's non-interactive shell inherits the environment.",
   "author": {
     "name": "Beau Simensen",
